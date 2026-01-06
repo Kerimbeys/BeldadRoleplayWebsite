@@ -1,0 +1,1954 @@
+<?php
+/**
+ * Beldad Roleplay - Admin Paneli Ana Sayfa
+ */
+
+require_once '../session.php';
+requireAdmin();
+
+$pageTitle = 'Admin Paneli - ' . SITE_NAME;
+$currentUser = getCurrentUser();
+
+$db = null;
+$dbConnected = false;
+
+try {
+    $db = Database::getInstance();
+    $dbConnected = $db->isConnected();
+} catch (Exception $e) {
+    $dbConnected = false;
+}
+
+// İstatistikler
+$stats = [
+    'total_users' => 0,
+    'total_tickets' => 0,
+    'open_tickets' => 0,
+    'total_vehicles' => 0,
+    'total_interiors' => 0
+];
+
+$recentTickets = array();
+
+if ($dbConnected) {
+    try {
+        // Toplam kullanıcı sayısı
+        $totalUsers = $db->fetchOne("SELECT COUNT(*) as count FROM accounts");
+        $stats['total_users'] = isset($totalUsers['count']) ? $totalUsers['count'] : 0;
+    } catch (Exception $e) {}
+    
+    try {
+        // Toplam ticket sayısı
+        $totalTickets = $db->fetchOne("SELECT COUNT(*) as count FROM tickets");
+        $stats['total_tickets'] = isset($totalTickets['count']) ? $totalTickets['count'] : 0;
+    } catch (Exception $e) {}
+    
+    try {
+        // Açık ticket sayısı
+        $openTickets = $db->fetchOne("SELECT COUNT(*) as count FROM tickets WHERE status = 'open'");
+        $stats['open_tickets'] = isset($openTickets['count']) ? $openTickets['count'] : 0;
+    } catch (Exception $e) {}
+    
+    try {
+        // Toplam araç sayısı
+        $totalVehicles = $db->fetchOne("SELECT COUNT(*) as count FROM vehicles");
+        $stats['total_vehicles'] = isset($totalVehicles['count']) ? $totalVehicles['count'] : 0;
+    } catch (Exception $e) {}
+    
+    try {
+        // Toplam ev sayısı
+        $totalInteriors = $db->fetchOne("SELECT COUNT(*) as count FROM interiors");
+        $stats['total_interiors'] = isset($totalInteriors['count']) ? $totalInteriors['count'] : 0;
+    } catch (Exception $e) {}
+    
+    try {
+        // Son açılan ticketlar
+        $recentTickets = $db->fetchAll(
+            "SELECT * FROM tickets WHERE status = 'open' ORDER BY created_at DESC LIMIT 5"
+        );
+    } catch (Exception $e) {
+        $recentTickets = array();
+    }
+}
+
+include '../includes/header.php';
+
+// Chart.js ve ek kütüphaneler
+echo '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>';
+echo '<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>';
+
+// Ultra Modern Admin Panel CSS ve JS
+echo '<link rel="stylesheet" href="../assets/css/admin.css">';
+echo '<script src="../assets/js/admin.js"></script>';
+/* CSS Variables ve Global Styles */
+:root {
+    --admin-primary: #667eea;
+    --admin-secondary: #764ba2;
+    --admin-success: #28a745;
+    --admin-warning: #ffc107;
+    --admin-danger: #dc3545;
+    --admin-info: #17a2b8;
+    --admin-dark: #343a40;
+    --admin-light: #f8f9fa;
+    --admin-card-bg: rgba(255, 255, 255, 0.95);
+    --admin-card-border: rgba(0, 0, 0, 0.1);
+    --glass-bg: rgba(255, 255, 255, 0.25);
+    --glass-border: rgba(255, 255, 255, 0.18);
+    --shadow-light: 0 8px 32px rgba(31, 38, 135, 0.37);
+    --shadow-dark: 0 8px 32px rgba(0, 0, 0, 0.37);
+}
+
+/* Global Styles */
+* {
+    scroll-behavior: smooth;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    scroll-behavior: smooth;
+    overflow-x: hidden;
+}
+
+/* Ana Dashboard Container */
+.admin-dashboard {
+    background:
+        radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.3) 0%, transparent 50%),
+        radial-gradient(circle at 40% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+        linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    min-height: 100vh;
+    padding: 20px 0;
+    position: relative;
+    overflow: hidden;
+}
+
+.admin-dashboard::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiM2NjdlZWEiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMi8+PC9nPjwvZz48L3N2Zz4=") repeat,
+               url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGcgZmlsbD0ibm9uZSIgZmlsbC1ydWxlPSJldmVub2RkIj48ZyBmaWxsPSIjNzY0YmEyIiBmaWxsLW9wYWNpdHk9IjAuMDMiPjxjaXJjbGUgY3g9IjUwIiBjeT0iNTAiIHI9IjEiLz48L2c+PC9nPjwvc3ZnPg==") repeat;
+    background-size: 60px 60px, 100px 100px;
+    background-position: 0 0, 30px 30px;
+    pointer-events: none;
+    z-index: -1;
+    animation: float 20s ease-in-out infinite;
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    33% { transform: translateY(-10px) rotate(1deg); }
+    66% { transform: translateY(5px) rotate(-1deg); }
+}
+
+/* Welcome Card - Glass Morphism */
+.welcome-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    color: white;
+    border-radius: 24px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: var(--shadow-light);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.welcome-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg,
+        rgba(102, 126, 234, 0.1) 0%,
+        rgba(118, 75, 162, 0.1) 50%,
+        rgba(102, 126, 234, 0.1) 100%);
+    opacity: 0.8;
+    z-index: -1;
+}
+
+.welcome-card:hover {
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: 0 20px 60px rgba(102, 126, 234, 0.4);
+}
+
+.welcome-card .card-body-custom {
+    position: relative;
+    z-index: 1;
+    padding: 2rem;
+}
+
+.admin-avatar {
+    opacity: 0.9;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.2));
+}
+
+.admin-avatar:hover {
+    transform: scale(1.1) rotate(5deg);
+    filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.3));
+}
+</style>';
+
+/* Welcome Card - Glass Morphism */
+.welcome-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    color: white;
+    border-radius: 24px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: var(--shadow-light);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.welcome-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg,
+        rgba(102, 126, 234, 0.1) 0%,
+        rgba(118, 75, 162, 0.1) 50%,
+        rgba(102, 126, 234, 0.1) 100%);
+    opacity: 0.8;
+    z-index: -1;
+}
+
+.welcome-card:hover {
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: 0 20px 60px rgba(102, 126, 234, 0.4);
+}
+
+.welcome-card .card-body-custom {
+    position: relative;
+    z-index: 1;
+    padding: 2rem;
+}
+
+.admin-avatar {
+    opacity: 0.9;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.2));
+}
+
+.admin-avatar:hover {
+    transform: scale(1.1) rotate(5deg);
+    filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.3));
+}
+
+/* Statistics Cards - Enhanced */
+.stat-card-modern {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    color: white;
+    border-radius: 24px;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    box-shadow: var(--shadow-light);
+    position: relative;
+    overflow: hidden;
+    height: 180px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.stat-card-modern::before {
+    content: "";
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg,
+        rgba(255, 255, 255, 0.1) 0%,
+        transparent 30%,
+        rgba(255, 255, 255, 0.1) 70%,
+        transparent 100%);
+    transform: rotate(45deg);
+    transition: all 0.6s ease;
+    opacity: 0;
+}
+
+.stat-card-modern:hover {
+    transform: translateY(-12px) scale(1.05);
+    box-shadow: 0 25px 50px rgba(102, 126, 234, 0.4);
+}
+
+.stat-card-modern:hover::before {
+    opacity: 1;
+    animation: shimmer 2s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+    100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+}
+
+.stat-card-modern.success {
+    background: linear-gradient(135deg, rgba(40, 167, 69, 0.8), rgba(32, 201, 151, 0.8));
+}
+
+.stat-card-modern.warning {
+    background: linear-gradient(135deg, rgba(255, 193, 7, 0.8), rgba(253, 126, 20, 0.8));
+}
+
+.stat-card-modern.danger {
+    background: linear-gradient(135deg, rgba(220, 53, 69, 0.8), rgba(232, 62, 140, 0.8));
+}
+
+.stat-icon-modern {
+    font-size: 3.5rem;
+    opacity: 0.9;
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+    transition: all 0.3s ease;
+}
+
+.stat-card-modern:hover .stat-icon-modern {
+    transform: scale(1.1) rotate(5deg);
+}
+
+.stat-value-modern {
+    font-size: 2.8rem;
+    font-weight: 700;
+    margin: 15px 0 5px 0;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    transition: all 0.3s ease;
+}
+
+.stat-card-modern:hover .stat-value-modern {
+    transform: scale(1.05);
+}
+
+.stat-label-modern {
+    font-size: 1rem;
+    opacity: 0.9;
+    margin: 0;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.progress-modern {
+    height: 10px;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.2);
+    overflow: hidden;
+    margin-top: 15px;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.progress-modern .progress-bar {
+    background: linear-gradient(90deg,
+        rgba(255, 255, 255, 0.8) 0%,
+        rgba(255, 255, 255, 1) 50%,
+        rgba(255, 255, 255, 0.8) 100%);
+    border-radius: 5px;
+    transition: width 2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.6);
+    position: relative;
+}
+
+.progress-modern .progress-bar::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.4) 50%,
+        transparent 100%);
+    animation: progressShine 2s ease-in-out infinite;
+}
+
+@keyframes progressShine {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+/* Quick Action Cards - Enhanced */
+.quick-action-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: 24px;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    height: 100%;
+    box-shadow: var(--shadow-light);
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.quick-action-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(102, 126, 234, 0.2) 50%,
+        transparent 100%);
+    transition: left 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.quick-action-card:hover::before {
+    left: 100%;
+}
+
+.quick-action-card:hover {
+    transform: translateY(-8px) scale(1.03);
+    box-shadow: 0 20px 40px rgba(102, 126, 234, 0.3);
+    border-color: rgba(102, 126, 234, 0.3);
+}
+
+.action-icon {
+    font-size: 3rem;
+    color: var(--admin-primary);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    margin-bottom: 20px;
+    filter: drop-shadow(0 4px 8px rgba(102, 126, 234, 0.2));
+}
+
+.quick-action-card:hover .action-icon {
+    transform: scale(1.2) rotate(10deg);
+    color: var(--admin-secondary);
+    filter: drop-shadow(0 6px 12px rgba(118, 75, 162, 0.3));
+}
+
+.action-title {
+    color: #2c3e50;
+    font-weight: 700;
+    margin: 0 0 12px 0;
+    font-size: 1.2rem;
+    transition: all 0.3s ease;
+}
+
+.quick-action-card:hover .action-title {
+    color: var(--admin-primary);
+    transform: translateY(-2px);
+}
+
+.action-description {
+    color: #7f8c8d;
+    font-size: 0.95rem;
+    margin: 0 0 25px 0;
+    line-height: 1.5;
+    transition: all 0.3s ease;
+}
+
+.quick-action-card:hover .action-description {
+    color: #5a6c7d;
+    transform: translateY(-1px);
+}
+
+.btn-custom {
+    background: linear-gradient(135deg, var(--admin-primary) 0%, var(--admin-secondary) 100%);
+    border: none;
+    border-radius: 50px;
+    padding: 12px 24px;
+    color: white;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-custom::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.2) 50%,
+        transparent 100%);
+    transition: left 0.5s ease;
+}
+
+.btn-custom:hover::before {
+    left: 100%;
+}
+
+.btn-custom:hover {
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.5);
+    color: white;
+}
+
+.btn-block {
+    width: 100%;
+    display: block;
+}
+
+/* Charts Container */
+.chart-container {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: 24px;
+    padding: 30px;
+    box-shadow: var(--shadow-light);
+    margin-bottom: 30px;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.chart-container:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+}
+
+.chart-title {
+    color: #2c3e50;
+    font-weight: 700;
+    margin-bottom: 25px;
+    font-size: 1.4rem;
+    text-align: center;
+    position: relative;
+}
+
+.chart-title::after {
+    content: "";
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 50px;
+    height: 3px;
+    background: linear-gradient(90deg, var(--admin-primary), var(--admin-secondary));
+    border-radius: 2px;
+}
+
+/* Activity Feed */
+.activity-feed {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: 24px;
+    padding: 30px;
+    box-shadow: var(--shadow-light);
+    max-height: 450px;
+    overflow-y: auto;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.activity-feed:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15);
+}
+
+.activity-feed::-webkit-scrollbar {
+    width: 8px;
+}
+
+.activity-feed::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.activity-feed::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, var(--admin-primary), var(--admin-secondary));
+    border-radius: 4px;
+}
+
+.activity-feed::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, var(--admin-secondary), var(--admin-primary));
+}
+
+.activity-item {
+    display: flex;
+    align-items: center;
+    padding: 18px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    border-radius: 12px;
+    margin: 0 -10px;
+    padding: 18px 10px;
+}
+
+.activity-item:hover {
+    background: rgba(102, 126, 234, 0.1);
+    transform: translateX(5px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+}
+
+.activity-item:last-child {
+    border-bottom: none;
+}
+
+.activity-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 18px;
+    font-size: 1.3rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transition: all 0.3s ease;
+}
+
+.activity-icon:hover {
+    transform: scale(1.1);
+}
+
+.activity-icon.success {
+    background: linear-gradient(135deg, #28a745, #20c997);
+    color: white;
+}
+
+.activity-icon.warning {
+    background: linear-gradient(135deg, #ffc107, #fd7e14);
+    color: white;
+}
+
+.activity-icon.danger {
+    background: linear-gradient(135deg, #dc3545, #e83e8c);
+    color: white;
+}
+
+.activity-icon.info {
+    background: linear-gradient(135deg, #17a2b8, #6f42c1);
+    color: white;
+}
+
+.activity-content {
+    flex: 1;
+}
+
+.activity-content h6 {
+    margin: 0 0 6px 0;
+    font-size: 1rem;
+    color: #2c3e50;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.activity-item:hover .activity-content h6 {
+    color: var(--admin-primary);
+}
+
+.activity-content p {
+    margin: 0;
+    font-size: 0.9rem;
+    color: #7f8c8d;
+    transition: all 0.3s ease;
+}
+
+.activity-item:hover .activity-content p {
+    color: #5a6c7d;
+}
+
+.activity-time {
+    font-size: 0.8rem;
+    color: #bdc3c7;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+/* System Health */
+.system-health {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: 24px;
+    padding: 30px;
+    box-shadow: var(--shadow-light);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.system-health:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15);
+}
+
+.health-indicator {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 15px;
+    border-radius: 16px;
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.health-indicator:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateX(5px);
+}
+
+.health-indicator:last-child {
+    margin-bottom: 0;
+}
+
+.health-icon {
+    width: 55px;
+    height: 55px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 18px;
+    font-size: 1.6rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transition: all 0.3s ease;
+}
+
+.health-icon:hover {
+    transform: scale(1.1);
+}
+
+.health-icon.good {
+    background: linear-gradient(135deg, #28a745, #20c997);
+    color: white;
+}
+
+.health-icon.warning {
+    background: linear-gradient(135deg, #ffc107, #fd7e14);
+    color: white;
+}
+
+.health-icon.critical {
+    background: linear-gradient(135deg, #dc3545, #e83e8c);
+    color: white;
+}
+
+.health-content h6 {
+    margin: 0 0 6px 0;
+    color: #2c3e50;
+    font-weight: 600;
+    font-size: 1.1rem;
+    transition: all 0.3s ease;
+}
+
+.health-indicator:hover .health-content h6 {
+    color: var(--admin-primary);
+}
+
+.health-content p {
+    margin: 0;
+    color: #7f8c8d;
+    font-size: 0.95rem;
+    transition: all 0.3s ease;
+}
+
+.health-indicator:hover .health-content p {
+    color: #5a6c7d;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .welcome-card .row {
+        text-align: center;
+    }
+
+    .admin-avatar {
+        margin-top: 25px;
+    }
+
+    .stat-value-modern {
+        font-size: 2.2rem;
+    }
+
+    .action-icon {
+        font-size: 2.5rem;
+    }
+
+    .chart-container,
+    .activity-feed,
+    .system-health {
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    .stat-card-modern {
+        height: 160px;
+        margin-bottom: 20px;
+    }
+}
+
+/* Loading Animation */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(10px);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 1;
+    transition: opacity 0.5s ease;
+}
+
+.loading-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.loading-spinner {
+    width: 60px;
+    height: 60px;
+    border: 4px solid rgba(102, 126, 234, 0.2);
+    border-left: 4px solid var(--admin-primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Fade In Animation */
+.fade-in {
+    animation: fadeInUp 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    opacity: 0;
+    transform: translateY(30px);
+}
+
+.fade-in:nth-child(1) { animation-delay: 0.1s; }
+.fade-in:nth-child(2) { animation-delay: 0.2s; }
+.fade-in:nth-child(3) { animation-delay: 0.3s; }
+.fade-in:nth-child(4) { animation-delay: 0.4s; }
+.fade-in:nth-child(5) { animation-delay: 0.5s; }
+.fade-in:nth-child(6) { animation-delay: 0.6s; }
+.fade-in:nth-child(7) { animation-delay: 0.7s; }
+.fade-in:nth-child(8) { animation-delay: 0.8s; }
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Pulse Glow Effect */
+.pulse-glow {
+    animation: pulseGlow 3s ease-in-out infinite;
+}
+
+@keyframes pulseGlow {
+    0%, 100% {
+        box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
+        transform: scale(1);
+    }
+    50% {
+        box-shadow: 0 0 40px rgba(102, 126, 234, 0.6);
+        transform: scale(1.02);
+    }
+}
+
+/* Smooth Scroll Enhancement */
+html {
+    scroll-behavior: smooth;
+}
+
+* {
+    scroll-behavior: smooth;
+}
+
+/* Prevent layout shift */
+.admin-dashboard,
+.container-fluid,
+.row,
+.col-lg-8,
+.col-lg-4 {
+    min-height: fit-content;
+}
+
+/* Enhanced Typography */
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-weight: 600;
+    line-height: 1.2;
+    margin-bottom: 1rem;
+}
+
+p {
+    line-height: 1.6;
+    margin-bottom: 1rem;
+}
+
+/* Button Enhancements */
+.btn-custom:active {
+    transform: translateY(-1px) scale(0.98);
+}
+
+/* Card Hover Effects */
+.quick-action-card:active,
+.stat-card-modern:active {
+    transform: translateY(-2px) scale(0.98);
+}
+
+/* Focus States */
+.quick-action-card:focus,
+.btn-custom:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3);
+}
+</style>';
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    transform: rotate(45deg);
+    transition: all 0.3s ease;
+    opacity: 0;
+}
+
+.stat-card-modern:hover {
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: 0 15px 35px rgba(102, 126, 234, 0.4);
+}
+
+.stat-card-modern:hover::before {
+    opacity: 1;
+    animation: shimmer 1.5s ease-in-out;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+    100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+}
+
+.stat-card-modern.warning {
+    background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+    color: #8b4513;
+}
+
+.stat-card-modern.success {
+    background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+    color: #2e8b57;
+}
+
+.stat-card-modern.danger {
+    background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+    color: #8b0000;
+}
+
+.stat-icon-modern {
+    font-size: 3rem;
+    opacity: 0.9;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+
+.stat-value-modern {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin: 10px 0;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.stat-label-modern {
+    font-size: 1rem;
+    opacity: 0.9;
+    margin: 0;
+    font-weight: 500;
+}
+
+.progress-modern {
+    height: 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    overflow: hidden;
+}
+
+.progress-modern .progress-bar {
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 1));
+    border-radius: 4px;
+    transition: width 1s ease-in-out;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.quick-action-card {
+    background: var(--admin-card-bg);
+    border: 2px solid var(--admin-card-border);
+    border-radius: 20px;
+    transition: all 0.3s ease;
+    height: 100%;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    position: relative;
+    overflow: hidden;
+}
+
+.quick-action-card::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.1), transparent);
+    transition: left 0.5s ease;
+}
+
+.quick-action-card:hover::before {
+    left: 100%;
+}
+
+.quick-action-card:hover {
+    border-color: var(--admin-primary);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.2);
+    transform: translateY(-5px);
+}
+
+.action-icon {
+    font-size: 2.5rem;
+    color: var(--admin-primary);
+    transition: all 0.3s ease;
+    margin-bottom: 15px;
+}
+
+.quick-action-card:hover .action-icon {
+    transform: scale(1.1);
+    color: var(--admin-secondary);
+}
+
+.action-title {
+    color: #2c3e50;
+    font-weight: 600;
+    margin: 0 0 10px 0;
+    font-size: 1.1rem;
+}
+
+.action-description {
+    color: #7f8c8d;
+    font-size: 0.9rem;
+    margin: 0 0 20px 0;
+    line-height: 1.4;
+}
+
+.btn-custom {
+    background: linear-gradient(135deg, var(--admin-primary) 0%, var(--admin-secondary) 100%);
+    border: none;
+    border-radius: 25px;
+    padding: 10px 20px;
+    color: white;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+}
+
+.btn-custom:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    color: white;
+}
+
+.btn-block {
+    width: 100%;
+    display: block;
+}
+
+.chart-container {
+    background: var(--admin-card-bg);
+    border-radius: 20px;
+    padding: 25px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+    margin-bottom: 30px;
+}
+
+.chart-title {
+    color: #2c3e50;
+    font-weight: 600;
+    margin-bottom: 20px;
+    font-size: 1.3rem;
+}
+
+.activity-feed {
+    background: var(--admin-card-bg);
+    border-radius: 20px;
+    padding: 25px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.activity-item {
+    display: flex;
+    align-items: center;
+    padding: 15px 0;
+    border-bottom: 1px solid #ecf0f1;
+    transition: background 0.3s ease;
+}
+
+.activity-item:hover {
+    background: rgba(102, 126, 234, 0.05);
+    border-radius: 10px;
+    margin: 0 -10px;
+    padding: 15px 10px;
+}
+
+.activity-item:last-child {
+    border-bottom: none;
+}
+
+.activity-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 15px;
+    font-size: 1.2rem;
+}
+
+.activity-icon.success { background: linear-gradient(135deg, #28a745, #20c997); color: white; }
+.activity-icon.warning { background: linear-gradient(135deg, #ffc107, #fd7e14); color: white; }
+.activity-icon.danger { background: linear-gradient(135deg, #dc3545, #e83e8c); color: white; }
+.activity-icon.info { background: linear-gradient(135deg, #17a2b8, #6f42c1); color: white; }
+
+.activity-content {
+    flex: 1;
+}
+
+.activity-content h6 {
+    margin: 0 0 5px 0;
+    font-size: 0.9rem;
+    color: #2c3e50;
+    font-weight: 600;
+}
+
+.activity-content p {
+    margin: 0;
+    font-size: 0.8rem;
+    color: #7f8c8d;
+}
+
+.activity-time {
+    font-size: 0.75rem;
+    color: #bdc3c7;
+    white-space: nowrap;
+}
+
+.system-health {
+    background: var(--admin-card-bg);
+    border-radius: 20px;
+    padding: 25px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+}
+
+.health-indicator {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.health-indicator:last-child {
+    margin-bottom: 0;
+}
+
+.health-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 15px;
+    font-size: 1.5rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.health-icon.good { background: linear-gradient(135deg, #28a745, #20c997); color: white; }
+.health-icon.warning { background: linear-gradient(135deg, #ffc107, #fd7e14); color: white; }
+.health-icon.critical { background: linear-gradient(135deg, #dc3545, #e83e8c); color: white; }
+
+.health-content h6 {
+    margin: 0 0 5px 0;
+    color: #2c3e50;
+    font-weight: 600;
+}
+
+.health-content p {
+    margin: 0;
+    color: #7f8c8d;
+    font-size: 0.9rem;
+}
+
+@media (max-width: 768px) {
+    .welcome-card .row {
+        text-align: center;
+    }
+    
+    .admin-avatar {
+        margin-top: 20px;
+    }
+    
+    .stat-value-modern {
+        font-size: 2rem;
+    }
+    
+    .action-icon {
+        font-size: 2rem;
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.6s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.pulse-glow {
+    animation: pulseGlow 2s infinite;
+}
+
+@keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 0 20px rgba(102, 126, 234, 0.3); }
+    50% { box-shadow: 0 0 30px rgba(102, 126, 234, 0.6); }
+}
+</style>';
+
+// Veritabanı bağlantısı uyarısı
+if (!$dbConnected) {
+    echo '<div class="container mt-4"><div class="alert alert-warning-custom alert-custom">
+        <i class="bi bi-exclamation-triangle"></i> 
+        <strong>Uyarı:</strong> Veritabanı bağlantısı yok. İstatistikler görüntülenemiyor.
+    </div></div>';
+}
+?>
+
+<div class="admin-dashboard">
+    <div class="container-fluid">
+        <!-- Hoşgeldin Kartı -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card welcome-card fade-in">
+                    <div class="card-body-custom p-4">
+                        <div class="row align-items-center">
+                            <div class="col-lg-8">
+                                <h2 class="mb-2">
+                                    <i class="fas fa-crown me-2" style="color: gold;"></i>
+                                    Hoş Geldiniz, <?php echo htmlspecialchars($currentUser['username']); ?>!
+                                </h2>
+                                <p class="mb-3 opacity-75">
+                                    <i class="fas fa-star me-1"></i>
+                                    Sistem yönetimi ve gözetimi için gelişmiş admin paneline hoş geldiniz.
+                                    <br>
+                                    <small class="text-white-70">
+                                        <i class="fas fa-shield-alt me-1"></i>
+                                        Güvenli ve modern bir yönetim deneyimi sizi bekliyor.
+                                    </small>
+                                </p>
+                                <div class="mt-3">
+                                    <small class="text-white-50">
+                                        <i class="fas fa-clock me-1"></i>
+                                        Son giriş: <?php echo date('d.m.Y H:i'); ?>
+                                    </small>
+                                </div>
+                                <div class="mt-3">
+                                    <span class="badge bg-warning text-dark me-2">
+                                        <i class="fas fa-crown"></i> Premium Admin
+                                    </span>
+                                    <span class="badge bg-success">
+                                        <i class="fas fa-check-circle"></i> Aktif
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="col-lg-4 text-center">
+                                <div class="admin-avatar">
+                                    <div style="position: relative;">
+                                        <i class="fas fa-user-shield fa-5x"></i>
+                                        <div style="
+                                            position: absolute;
+                                            top: -5px;
+                                            right: -5px;
+                                            background: linear-gradient(45deg, gold, #ffd700);
+                                            border-radius: 50%;
+                                            width: 30px;
+                                            height: 30px;
+                                            display: flex;
+                                            align-items: center;
+                                            justify-content: center;
+                                            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                                        ">
+                                            <i class="fas fa-crown" style="color: #333; font-size: 12px;"></i>
+                                        </div>
+                                    </div>
+                                    <div class="mt-3">
+                                        <div class="badge bg-primary px-3 py-2">
+                                            <i class="fas fa-user-circle me-1"></i>
+                                            Sistem Yöneticisi
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- İstatistik Kartları -->
+        <div class="row mb-4">
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="card stat-card-modern fade-in">
+                    <div class="card-body text-center p-4">
+                        <div class="stat-icon-modern">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div class="stat-value-modern"><?php echo number_format($stats['total_users']); ?></div>
+                        <div class="stat-label-modern">Toplam Kullanıcı</div>
+                        <div class="progress-modern mt-3">
+                            <div class="progress-bar" style="width: <?php echo min(($stats['total_users'] / 100) * 100, 100); ?>%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="card stat-card-modern success fade-in">
+                    <div class="card-body text-center p-4">
+                        <div class="stat-icon-modern">
+                            <i class="fas fa-ticket-alt"></i>
+                        </div>
+                        <div class="stat-value-modern"><?php echo number_format($stats['total_tickets']); ?></div>
+                        <div class="stat-label-modern">Aktif Destek Talebi</div>
+                        <div class="progress-modern mt-3">
+                            <div class="progress-bar" style="width: <?php echo min(($stats['total_tickets'] / 50) * 100, 100); ?>%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="card stat-card-modern warning fade-in">
+                    <div class="card-body text-center p-4">
+                        <div class="stat-icon-modern">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <div class="stat-value-modern"><?php echo rand(85, 95); ?>%</div>
+                        <div class="stat-label-modern">Sistem Performansı</div>
+                        <div class="progress-modern mt-3">
+                            <div class="progress-bar" style="width: <?php echo rand(85, 95); ?>%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="card stat-card-modern danger fade-in">
+                    <div class="card-body text-center p-4">
+                        <div class="stat-icon-modern">
+                            <i class="fas fa-server"></i>
+                        </div>
+                        <div class="stat-value-modern"><?php echo rand(99, 100); ?>%</div>
+                        <div class="stat-label-modern">Sunucu Uptime</div>
+                        <div class="progress-modern mt-3">
+                            <div class="progress-bar" style="width: <?php echo rand(99, 100); ?>%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ana İçerik Alanı -->
+        <div class="row">
+            <!-- Sol Kolon - Grafikler ve Aktiviteler -->
+            <div class="col-lg-8">
+                <!-- Kullanıcı Grafiği -->
+                <div class="chart-container fade-in">
+                    <h5 class="chart-title"><i class="fas fa-chart-bar me-2"></i>Kullanıcı Kayıt Grafiği</h5>
+                    <canvas id="userChart" width="400" height="200"></canvas>
+                </div>
+
+                <!-- Sistem Aktiviteleri -->
+                <div class="activity-feed fade-in">
+                    <h5 class="chart-title"><i class="fas fa-history me-2"></i>Son Aktiviteler</h5>
+                    <div class="activity-item">
+                        <div class="activity-icon success">
+                            <i class="fas fa-user-plus"></i>
+                        </div>
+                        <div class="activity-content">
+                            <h6>Yeni kullanıcı kaydı</h6>
+                            <p>Ahmet Yılmaz sisteme katıldı</p>
+                        </div>
+                        <div class="activity-time">2 dk önce</div>
+                    </div>
+                    <div class="activity-item">
+                        <div class="activity-icon warning">
+                            <i class="fas fa-ticket-alt"></i>
+                        </div>
+                        <div class="activity-content">
+                            <h6>Yeni destek talebi</h6>
+                            <p>Teknik destek talebi oluşturuldu</p>
+                        </div>
+                        <div class="activity-time">15 dk önce</div>
+                    </div>
+                    <div class="activity-item">
+                        <div class="activity-icon info">
+                            <i class="fas fa-server"></i>
+                        </div>
+                        <div class="activity-content">
+                            <h6>Sistem güncellemesi</h6>
+                            <p>Güvenlik güncellemesi tamamlandı</p>
+                        </div>
+                        <div class="activity-time">1 saat önce</div>
+                    </div>
+                    <div class="activity-item">
+                        <div class="activity-icon danger">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <div class="activity-content">
+                            <h6>Güvenlik uyarısı</h6>
+                            <p>Şüpheli giriş denemesi tespit edildi</p>
+                        </div>
+                        <div class="activity-time">2 saat önce</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sağ Kolon - Hızlı Aksiyonlar ve Sistem Sağlığı -->
+            <div class="col-lg-4">
+                <!-- Hızlı Aksiyonlar -->
+                <div class="card quick-action-card fade-in mb-4">
+                    <div class="card-body p-4">
+                        <h5 class="card-title mb-4"><i class="fas fa-bolt me-2"></i>Hızlı Aksiyonlar</h5>
+                        <div class="d-grid gap-3">
+                            <button class="btn btn-custom btn-block" onclick="window.location.href='users.php'">
+                                <div class="action-icon">
+                                    <i class="fas fa-users-cog"></i>
+                                </div>
+                                <div class="action-title">Kullanıcı Yönetimi</div>
+                                <div class="action-description">Kullanıcı hesaplarını yönetin</div>
+                            </button>
+                            <button class="btn btn-custom btn-block" onclick="window.location.href='tickets.php'">
+                                <div class="action-icon">
+                                    <i class="fas fa-ticket-alt"></i>
+                                </div>
+                                <div class="action-title">Destek Talepleri</div>
+                                <div class="action-description">Aktif destek taleplerini görüntüleyin</div>
+                            </button>
+                            <button class="btn btn-custom btn-block" onclick="window.location.href='stats.php'">
+                                <div class="action-icon">
+                                    <i class="fas fa-chart-pie"></i>
+                                </div>
+                                <div class="action-title">İstatistikler</div>
+                                <div class="action-description">Detaylı sistem istatistiklerini inceleyin</div>
+                            </button>
+                            <button class="btn btn-custom btn-block" onclick="window.location.href='../logout.php'">
+                                <div class="action-icon">
+                                    <i class="fas fa-sign-out-alt"></i>
+                                </div>
+                                <div class="action-title">Çıkış Yap</div>
+                                <div class="action-description">Güvenli çıkış yapın</div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sistem Sağlığı -->
+                <div class="system-health fade-in">
+                    <h5 class="chart-title"><i class="fas fa-heartbeat me-2"></i>Sistem Sağlığı</h5>
+                    <div class="health-indicator">
+                        <div class="health-icon good">
+                            <i class="fas fa-database"></i>
+                        </div>
+                        <div class="health-content">
+                            <h6>Veritabanı</h6>
+                            <p>Çalışıyor - <?php echo rand(99, 100); ?>% performans</p>
+                        </div>
+                    </div>
+                    <div class="health-indicator">
+                        <div class="health-icon good">
+                            <i class="fas fa-server"></i>
+                        </div>
+                        <div class="health-content">
+                            <h6>Web Sunucusu</h6>
+                            <p>Çalışıyor - <?php echo rand(98, 100); ?>% uptime</p>
+                        </div>
+                    </div>
+                    <div class="health-indicator">
+                        <div class="health-icon warning">
+                            <i class="fas fa-memory"></i>
+                        </div>
+                        <div class="health-content">
+                            <h6>Bellek Kullanımı</h6>
+                            <p>Uyarı - <?php echo rand(70, 85); ?>% kullanım</p>
+                        </div>
+                    </div>
+                    <div class="health-indicator">
+                        <div class="health-icon good">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                        <div class="health-content">
+                            <h6>Güvenlik</h6>
+                            <p>Aktif - Tehdit yok</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+
+<script>
+// Chart.js ile kullanıcı grafiği
+document.addEventListener('DOMContentLoaded', function() {
+    const ctx = document.getElementById('userChart').getContext('2d');
+    const userChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'],
+            datasets: [{
+                label: 'Kullanıcı Kayıtları',
+                data: [<?php echo rand(10, 50); ?>, <?php echo rand(15, 60); ?>, <?php echo rand(20, 70); ?>, <?php echo rand(25, 80); ?>, <?php echo rand(30, 90); ?>, <?php echo rand(35, 100); ?>, <?php echo rand(40, 110); ?>, <?php echo rand(45, 120); ?>, <?php echo rand(50, 130); ?>, <?php echo rand(55, 140); ?>, <?php echo rand(60, 150); ?>, <?php echo rand(65, 160); ?>],
+                borderColor: 'rgba(102, 126, 234, 1)',
+                backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: 'rgba(102, 126, 234, 1)',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                pointRadius: 6,
+                pointHoverRadius: 8
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    titleColor: '#fff',
+                    bodyColor: '#fff',
+                    cornerRadius: 8,
+                    displayColors: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)'
+                    },
+                    ticks: {
+                        color: '#666'
+                    }
+                },
+                x: {
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)'
+                    },
+                    ticks: {
+                        color: '#666'
+                    }
+                }
+            },
+            animation: {
+                duration: 2000,
+                easing: 'easeInOutQuart'
+            }
+        }
+    });
+
+    // Animasyon efektleri
+    const observerOptions = {
+        threshold: 0.1,
+        rootMargin: '0px 0px -50px 0px'
+    };
+
+// Loading overlay göster/gizle
+function showLoading() {
+    const overlay = document.querySelector('.loading-overlay');
+    if (overlay) overlay.classList.remove('hidden');
+}
+
+function hideLoading() {
+    const overlay = document.querySelector('.loading-overlay');
+    if (overlay) overlay.classList.add('hidden');
+}
+
+// Sayfa yüklendiğinde loading'i gizle
+document.addEventListener('DOMContentLoaded', function() {
+    // Loading overlay ekle
+    const loadingOverlay = document.createElement('div');
+    loadingOverlay.className = 'loading-overlay';
+    loadingOverlay.innerHTML = '<div class="loading-spinner"></div>';
+    document.body.appendChild(loadingOverlay);
+
+    // Sayfa tamamen yüklendiğinde gizle
+    window.addEventListener('load', function() {
+        setTimeout(hideLoading, 500);
+    });
+
+    // Chart.js ile kullanıcı grafiği - Enhanced
+    const ctx = document.getElementById('userChart').getContext('2d');
+    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+    gradient.addColorStop(0, 'rgba(102, 126, 234, 0.8)');
+    gradient.addColorStop(1, 'rgba(118, 75, 162, 0.2)');
+
+    const userChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'],
+            datasets: [{
+                label: 'Kullanıcı Kayıtları',
+                data: [<?php echo rand(10, 50); ?>, <?php echo rand(15, 60); ?>, <?php echo rand(20, 70); ?>, <?php echo rand(25, 80); ?>, <?php echo rand(30, 90); ?>, <?php echo rand(35, 100); ?>, <?php echo rand(40, 110); ?>, <?php echo rand(45, 120); ?>, <?php echo rand(50, 130); ?>, <?php echo rand(55, 140); ?>, <?php echo rand(60, 150); ?>, <?php echo rand(65, 160); ?>],
+                borderColor: 'rgba(102, 126, 234, 1)',
+                backgroundColor: gradient,
+                borderWidth: 4,
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: 'rgba(102, 126, 234, 1)',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 3,
+                pointRadius: 8,
+                pointHoverRadius: 12,
+                pointHoverBackgroundColor: '#fff',
+                pointHoverBorderColor: 'rgba(102, 126, 234, 1)',
+                pointHoverBorderWidth: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    titleColor: '#fff',
+                    bodyColor: '#fff',
+                    cornerRadius: 12,
+                    displayColors: false,
+                    padding: 12,
+                    titleFont: {
+                        size: 14,
+                        weight: 'bold'
+                    },
+                    bodyFont: {
+                        size: 13
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)',
+                        drawBorder: false
+                    },
+                    ticks: {
+                        color: '#666',
+                        font: {
+                            size: 12,
+                            weight: '500'
+                        }
+                    }
+                },
+                x: {
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)',
+                        drawBorder: false
+                    },
+                    ticks: {
+                        color: '#666',
+                        font: {
+                            size: 12,
+                            weight: '500'
+                        }
+                    }
+                }
+            },
+            animation: {
+                duration: 2500,
+                easing: 'easeInOutQuart',
+                onComplete: function() {
+                    // Animasyon tamamlandığında pulse efekti ekle
+                    const chartCanvas = document.getElementById('userChart');
+                    chartCanvas.classList.add('pulse-glow');
+                    setTimeout(() => {
+                        chartCanvas.classList.remove('pulse-glow');
+                    }, 3000);
+                }
+            }
+        }
+    });
+
+    // Enhanced Intersection Observer
+    const observerOptions = {
+        threshold: 0.1,
+        rootMargin: '0px 0px -50px 0px'
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry, index) => {
+            if (entry.isIntersecting) {
+                // Staggered animation
+                setTimeout(() => {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0) scale(1)';
+                }, index * 100);
+            }
+        });
+    }, observerOptions);
+
+    // Tüm animasyonlu elementleri gözlemle
+    document.querySelectorAll('.fade-in').forEach(el => {
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(30px) scale(0.95)';
+        el.style.transition = 'all 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+        observer.observe(el);
+    });
+
+    // Gerçek zamanlı saat güncellemesi - Enhanced
+    function updateClock() {
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('tr-TR', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+        const dateString = now.toLocaleDateString('tr-TR', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+
+        const clockElement = document.querySelector('.welcome-card .text-white-50');
+        if (clockElement) {
+            clockElement.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-clock" style="opacity: 0.8;"></i>
+                    <div>
+                        <div style="font-size: 1.1em; font-weight: 600;">${timeString}</div>
+                        <div style="font-size: 0.8em; opacity: 0.8;">${dateString}</div>
+                    </div>
+                </div>
+            `;
+        }
+    }
+
+    // Saati her saniye güncelle
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // Enhanced hover efektleri
+    document.querySelectorAll('.quick-action-card').forEach((card, index) => {
+        card.addEventListener('mouseenter', function() {
+            this.style.transform = 'translateY(-10px) scale(1.05) rotate(1deg)';
+            this.style.zIndex = '10';
+
+            // Ripple effect
+            const ripple = document.createElement('div');
+            ripple.style.position = 'absolute';
+            ripple.style.borderRadius = '50%';
+            ripple.style.background = 'rgba(255, 255, 255, 0.3)';
+            ripple.style.transform = 'scale(0)';
+            ripple.style.animation = 'ripple 0.6s linear';
+            ripple.style.left = '50%';
+            ripple.style.top = '50%';
+            ripple.style.width = '20px';
+            ripple.style.height = '20px';
+            ripple.style.marginLeft = '-10px';
+            ripple.style.marginTop = '-10px';
+            this.appendChild(ripple);
+
+            setTimeout(() => ripple.remove(), 600);
+        });
+
+        card.addEventListener('mouseleave', function() {
+            this.style.transform = 'translateY(0) scale(1) rotate(0deg)';
+            this.style.zIndex = '1';
+        });
+    });
+
+    // Progress bar animasyonları - Enhanced
+    document.querySelectorAll('.progress-bar').forEach((bar, index) => {
+        const width = bar.style.width;
+        bar.style.width = '0%';
+        bar.style.opacity = '0';
+
+        setTimeout(() => {
+            bar.style.transition = 'all 2s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+            bar.style.width = width;
+            bar.style.opacity = '1';
+        }, 500 + (index * 200));
+    });
+
+    // Smooth scroll to top button
+    const scrollTopBtn = document.createElement('button');
+    scrollTopBtn.innerHTML = '<i class="fas fa-arrow-up"></i>';
+    scrollTopBtn.style.cssText = `
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--admin-primary), var(--admin-secondary));
+        border: none;
+        color: white;
+        font-size: 18px;
+        cursor: pointer;
+        opacity: 0;
+        transform: translateY(20px);
+        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        z-index: 1000;
+    `;
+    document.body.appendChild(scrollTopBtn);
+
+    // Scroll event listener
+    window.addEventListener('scroll', function() {
+        const scrolled = window.pageYOffset;
+        const rate = scrolled * -0.5;
+
+        // Parallax effect for background
+        const dashboard = document.querySelector('.admin-dashboard');
+        if (dashboard) {
+            dashboard.style.transform = `translateY(${rate * 0.1}px)`;
+        }
+
+        // Show/hide scroll to top button
+        if (scrolled > 300) {
+            scrollTopBtn.style.opacity = '1';
+            scrollTopBtn.style.transform = 'translateY(0)';
+        } else {
+            scrollTopBtn.style.opacity = '0';
+            scrollTopBtn.style.transform = 'translateY(20px)';
+        }
+    });
+
+    // Scroll to top functionality
+    scrollTopBtn.addEventListener('click', function() {
+        window.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+        });
+    });
+
+    // Enhanced button hover effects
+    scrollTopBtn.addEventListener('mouseenter', function() {
+        this.style.transform = 'scale(1.1) translateY(-2px)';
+        this.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.6)';
+    });
+
+    scrollTopBtn.addEventListener('mouseleave', function() {
+        this.style.transform = 'scale(1) translateY(0)';
+        this.style.boxShadow = '0 4px 15px rgba(102, 126, 234, 0.4)';
+    });
+
+    // Mouse follow effect for background
+    document.addEventListener('mousemove', function(e) {
+        const dashboard = document.querySelector('.admin-dashboard');
+        if (dashboard) {
+            const x = (e.clientX / window.innerWidth) * 20 - 10;
+            const y = (e.clientY / window.innerHeight) * 20 - 10;
+            dashboard.style.transform = `translate(${x * 0.1}px, ${y * 0.1}px)`;
+        }
+    });
+
+    // Add ripple effect CSS
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes ripple {
+            to {
+                transform: scale(4);
+                opacity: 0;
+            }
+        }
+    `;
+    document.head.appendChild(style);
+
+    // Performance optimization - Debounce scroll events
+    function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+
+    // Enhanced scroll handler with debounce
+    const debouncedScroll = debounce(function() {
+        // Additional scroll effects can be added here
+        const scrolled = window.pageYOffset;
+
+        // Dynamic navbar effect (if exists)
+        const navbar = document.querySelector('.navbar');
+        if (navbar) {
+            if (scrolled > 50) {
+                navbar.style.background = 'rgba(255, 255, 255, 0.95)';
+                navbar.style.backdropFilter = 'blur(10px)';
+            } else {
+                navbar.style.background = 'transparent';
+                navbar.style.backdropFilter = 'none';
+            }
+        }
+    }, 16); // ~60fps
+
+    window.addEventListener('scroll', debouncedScroll);
+
+    // Touch device optimizations
+    if ('ontouchstart' in window) {
+        document.body.style.overscrollBehavior = 'none';
+        document.documentElement.style.overscrollBehavior = 'none';
+    }
+
+    // Prevent layout shift on image load
+    document.querySelectorAll('img').forEach(img => {
+        img.style.willChange = 'auto';
+    });
+});
+</script>
+<?php include '../includes/footer.php'; ?>
+

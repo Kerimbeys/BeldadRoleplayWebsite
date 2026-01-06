@@ -170,7 +170,7 @@ Bu proje MIT lisansı altında lisanslanmıştır.
 
 ## 👨‍💻 Geliştirici
 
-BeldadRolepaly User Control Panel - Modern ve güvenli kullanıcı kontrol paneli
+MTA:SA User Control Panel - Modern ve güvenli kullanıcı kontrol paneli
 
 ---
 
