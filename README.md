@@ -170,8 +170,9 @@ Bu proje MIT lisansı altında lisanslanmıştır.
 
 ## 👨‍💻 Geliştirici
 
-MTA:SA User Control Panel - Modern ve güvenli kullanıcı kontrol paneli
+BeldadRoleplay User Control Panel - Modern ve güvenli kullanıcı kontrol paneli
 
 ---
 
 **⭐ Beğendiyseniz yıldız vermeyi unutmayın!**
+
